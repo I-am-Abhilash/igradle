@@ -1,0 +1,14 @@
+# Build output
+/bin/
+/dist/
+
+# Go
+*.test
+*.out
+coverage.html
+vendor/
+
+# Editor
+.idea/
+.vscode/
+*.swp
