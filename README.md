@@ -10,34 +10,9 @@
 
 An interactive, high-performance **Gradle task launcher & real-time monitoring dashboard** built in Go. Optimized for narrow, tall terminal configurations, `igradle` provides a unified split-screen monitoring dashboard that lets you search, multi-select, and execute Gradle tasks with live streaming output and dynamic system telemetry.
 
-```
-── :backend:auth:test ──────────────────────────────────────
-> Task :backend:auth:test
-  ✓ CompileJava — completed, 47 source files
-  ⋯ TestWorker — running suite #3 of 12 ...
-─────────────────────────────────────────────────────────────
- ⠋ 2/3   ✔ 1   ✘ 0      PgUp/PgDn scroll   q skip remaining
-```
-
----
-
-##  Features
-
--  **Fuzzy Task Selector**: Fuzzy-search, filter, and multi-select tasks across all modules using a clean interactive list.
--  **Multi-Module Aware**: Automatically parses your project structure and labels tasks with their corresponding module paths.
--  **Real-Time Telemetry Dashboard**:
-  - **Live Elapsed Time** tracking.
-  - **Gradle Daemon OS Detection** (e.g. Linux, macOS, Windows).
-  - **Live Gradle Daemon Memory Monitoring** (RSS usage & daemon instance count).
--  **Intelligent Escape-Key Navigation**:
-  - *First Escape* exits filter text input, focusing the list for keyboard navigation (`j`/`k` / arrows).
-  - *Second Escape* resets the filter, returning the task list to its initial state.
-  - *Third Escape* safely exits the TUI.
--  **Auto-Scrolling Log Viewport**: Watch tasks compile, test, or publish in real time with viewport mouse-wheel support and page/half-page keyboard scrolling. Includes auto-scroll pause when reviewing logs up-viewport.
--  **Unified Brand Aesthetic**: Styled with a premium palette featuring a custom blue-to-teal gradient.
--  **Dual Execution Modes**: Choose between **Sequential** (running task by task with full logging) and **Parallel** (all tasks concurrently with multiplexed logs).
--  **Flexible Failure Policies**: Choose to stop on the first failure (providing quick Retry/Skip/Quit options) or continue executing other tasks and summarize results at the end.
--  **Smart Cache Fast-Path**: Walks up the directory tree to locate `gradlew` and caches all project tasks until a build configuration file (`build.gradle`, `build.gradle.kts`, `settings.gradle`) is modified.
+<p align="center">
+  <video src="assets/igradle.mp4" width="100%" autoplay loop muted controls></video>
+</p>
 
 ---
 
@@ -69,17 +44,6 @@ Use GoReleaser to compile local packages for Linux, macOS, and Windows:
 goreleaser release --snapshot --clean
 ```
 Your compiled packages will be exported in the `./dist/` directory.
-
----
-
-## 🎨 Themes & Branded Aesthetics
-
-`igradle` uses a premium dark-themed color palette to match your workspace:
-* **Brand Blue (`#209BC4`)**: Highlights panel headers, active tasks, elapsed time, and metadata.
-* **Brand Teal (`#02A882`)**: Shows success statuses, completion percentages, checkmarks (`✔`), and active daemons.
-* **Slate Gray (`#7F848E`)**: Keeps descriptions, inactive items, and secondary information legible without causing eye strain.
-
-To change your theme on the fly, press `t` in the selection menu to cycle through themes (including Dracula, Nord, and Gruvbox).
 
 ---
 
@@ -168,10 +132,47 @@ igradle -h                    # Show CLI help
                        └─────────────────────────┘
 ```
 
+##  Features
+
+<p align="center">
+  <img src="assets/image.png" alt="igradle Features Overview" width="100%">
+</p>
+
+-  **Fuzzy Task Selector**: Fuzzy-search, filter, and multi-select tasks across all modules using a clean interactive list.
+-  **Multi-Module Aware**: Automatically parses your project structure and labels tasks with their corresponding module paths.
+-  **Real-Time Telemetry Dashboard**:
+- **Live Elapsed Time** tracking.
+- **Gradle Daemon OS Detection** (e.g. Linux, macOS, Windows).
+- **Live Gradle Daemon Memory Monitoring** (RSS usage & daemon instance count).
+-  **Intelligent Escape-Key Navigation**:
+- *First Escape* exits filter text input, focusing the list for keyboard navigation (`j`/`k` / arrows).
+- *Second Escape* resets the filter, returning the task list to its initial state.
+- *Third Escape* safely exits the TUI.
+-  **Auto-Scrolling Log Viewport**: Watch tasks compile, test, or publish in real time with viewport mouse-wheel support and page/half-page keyboard scrolling. Includes auto-scroll pause when reviewing logs up-viewport.
+-  **Unified Brand Aesthetic**: Styled with a premium palette featuring a custom blue-to-teal gradient.
+-  **Dual Execution Modes**: Choose between **Sequential** (running task by task with full logging) and **Parallel** (all tasks concurrently with multiplexed logs).
+-  **Flexible Failure Policies**: Choose to stop on the first failure (providing quick Retry/Skip/Quit options) or continue executing other tasks and summarize results at the end.
+-  **Smart Cache Fast-Path**: Walks up the directory tree to locate `gradlew` and caches all project tasks until a build configuration file (`build.gradle`, `build.gradle.kts`, `settings.gradle`) is modified.
+
+---
+
+
 ### Subprocess Log Streaming
 Logs are streamed from Gradle subprocesses asynchronously using thread-safe Ring Buffers (5000-line capacity). A drop-on-full channel buffer keeps the subprocesses from blocking on I/O. The TUI coalesces updates at 60Hz via a `tea.Tick(16ms)` loop to maintain high performance with minimal CPU utilization.
 
 ---
+
+## 🎨 Themes & Branded Aesthetics
+
+`igradle` uses a premium dark-themed color palette to match your workspace:
+* **Brand Blue (`#209BC4`)**: Highlights panel headers, active tasks, elapsed time, and metadata.
+* **Brand Teal (`#02A882`)**: Shows success statuses, completion percentages, checkmarks (`✔`), and active daemons.
+* **Slate Gray (`#7F848E`)**: Keeps descriptions, inactive items, and secondary information legible without causing eye strain.
+
+To change your theme on the fly, press `t` in the selection menu to cycle through themes (including Dracula, Nord, and Gruvbox).
+
+---
+
 
 ## 📄 License
 
