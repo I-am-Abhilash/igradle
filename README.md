@@ -1,7 +1,14 @@
-# igradle
+# ⚡ igradle
 
-Interactive Gradle task launcher with multi-module support, live streaming output, and per-task progress.
-A single static binary, ported from the fish shell function of the same name.
+<p align="center">
+  <a href="#-features"><b>Features</b></a> •
+  <a href="#-installation"><b>Installation</b></a> •
+  <a href="#-usage--controls"><b>Usage & Controls</b></a> •
+  <a href="#-themes"><b>Themes & Branded Aesthetics</b></a> •
+  <a href="#-architecture"><b>Architecture</b></a>
+</p>
+
+An interactive, high-performance **Gradle task launcher & real-time monitoring dashboard** built in Go. Optimized for narrow, tall terminal configurations, `igradle` provides a unified split-screen monitoring dashboard that lets you search, multi-select, and execute Gradle tasks with live streaming output and dynamic system telemetry.
 
 ```
 ── :backend:auth:test ──────────────────────────────────────
@@ -12,167 +19,154 @@ A single static binary, ported from the fish shell function of the same name.
  ⠋ 2/3   ✔ 1   ✘ 0      PgUp/PgDn scroll   q skip remaining
 ```
 
-## What's new in v2
+---
 
-| v1 (fish)                 | v2 (Go)                                          |
-| ------------------------- | ------------------------------------------------ |
-| Select and exit           | Select, stream output, watch tasks build         |
-| `fzf -m`                  | Bubble Tea list + custom delegate                |
-| One-shot execution        | Sequential **or** parallel, user choice          |
-| Output after exit         | Live stdout/stderr into a scrolling viewport     |
-| No progress feedback      | Per-task spinner + elapsed time + pass/fail      |
-| Stop on failure           | Stop **or** continue-on-failure, user choice     |
-| Single cache format       | Same; cache reused as fast-path                  |
+## ✨ Features
 
-## Features
+- 🎯 **Fuzzy Task Selector**: Fuzzy-search, filter, and multi-select tasks across all modules using a clean interactive list.
+- 📦 **Multi-Module Aware**: Automatically parses your project structure and labels tasks with their corresponding module paths.
+- 🚀 **Real-Time Telemetry Dashboard**:
+  - **Live Elapsed Time** tracking.
+  - **Gradle Daemon OS Detection** (e.g. Linux, macOS, Windows).
+  - **Live Gradle Daemon Memory Monitoring** (RSS usage & daemon instance count).
+- 🔄 **Intelligent Escape-Key Navigation**:
+  - *First Escape* exits filter text input, focusing the list for keyboard navigation (`j`/`k` / arrows).
+  - *Second Escape* resets the filter, returning the task list to its initial state.
+  - *Third Escape* safely exits the TUI.
+- ⚡ **Auto-Scrolling Log Viewport**: Watch tasks compile, test, or publish in real time with viewport mouse-wheel support and page/half-page keyboard scrolling. Includes auto-scroll pause when reviewing logs up-viewport.
+- 🎨 **Unified Brand Aesthetic**: Styled with a premium palette featuring a custom blue-to-teal gradient.
+- ⚙️ **Dual Execution Modes**: Choose between **Sequential** (running task by task with full logging) and **Parallel** (all tasks concurrently with multiplexed logs).
+- 🛡️ **Flexible Failure Policies**: Choose to stop on the first failure (providing quick Retry/Skip/Quit options) or continue executing other tasks and summarize results at the end.
+- 📁 **Smart Cache Fast-Path**: Walks up the directory tree to locate `gradlew` and caches all project tasks until a build configuration file (`build.gradle`, `build.gradle.kts`, `settings.gradle`) is modified.
 
-- **Multi-select** — pick one or many tasks
-- **Multi-module aware** — tasks tagged with module path
-- **Smart cache** — reuses `gradle tasks --all` until a build file changes
-- **Auto-finds `gradlew`** — walks up the directory tree
-- **Live streaming** — watch each task build, test, or publish in real time
-- **Per-task progress** — spinner while running, ✔ green / ✘ red at the end
-- **Two execution modes** — sequential (one at a time, full log) or parallel (all at once)
-- **Failure handling** — stop after first failure (with retry/skip) or continue and summarize
-- **Cross-platform** — Linux, macOS, Windows; amd64 and arm64
-- **Single binary** — no fzf, no awk, no shell, no runtime
+---
 
-## Install
+## 📥 Installation
 
+### 1. Direct Install (Recommended)
+If you already have Go installed on your machine, you can install the latest release directly:
 ```bash
-git clone <this-repo> igradle
+go install github.com/xe23/projects/igradle@latest
+```
+
+### 2. Manual Build
+Clone the repository and compile the optimized binary:
+```bash
+git clone https://github.com/xe23/projects/igradle.git
 cd igradle
-make install       # → $GOBIN/igradle (or ~/go/bin/igradle)
+make install
 ```
 
-Cross-compile for all platforms:
-
+### 3. Cross-Compile for All Platforms
+Use GoReleaser to compile local packages for Linux, macOS, and Windows:
 ```bash
-make build-all
-ls bin/
-# igradle-linux-amd64   igradle-linux-arm64
-# igradle-darwin-amd64  igradle-darwin-arm64
-# igradle-windows-amd64.exe  igradle-windows-arm64.exe
+goreleaser release --snapshot --clean
 ```
+Your compiled packages will be exported in the `./dist/` directory.
 
-## Usage
+---
 
+## 🎨 Themes & Branded Aesthetics
+
+`igradle` uses a premium dark-themed color palette to match your workspace:
+* **Brand Blue (`#209BC4`)**: Highlights panel headers, active tasks, elapsed time, and metadata.
+* **Brand Teal (`#02A882`)**: Shows success statuses, completion percentages, checkmarks (`✔`), and active daemons.
+* **Slate Gray (`#7F848E`)**: Keeps descriptions, inactive items, and secondary information legible without causing eye strain.
+
+To change your theme on the fly, press `t` in the selection menu to cycle through themes (including Dracula, Nord, and Gruvbox).
+
+---
+
+## 🚀 Usage & Controls
+
+### Command Flags
 ```bash
-igradle                       # launch selector, ask mode + failure at runtime
-igradle -r                    # force-refresh task cache
-igradle -n                    # dry run — print commands, don't execute
-igradle build test            # extra args forwarded to gradle
-igradle --mode parallel       # skip the mode picker
-igradle --on-failure continue # don't stop on first failure
-igradle -h                    # help
+igradle                       # Launch the selector (prompt for mode/failure policy)
+igradle -r                    # Force-refresh the task cache
+igradle -n                    # Dry run (print commands instead of executing)
+igradle build test            # Run specific tasks immediately (bypasses selector)
+igradle --mode parallel       # Force parallel execution mode
+igradle --on-failure continue # Force continue-on-failure policy
+igradle -h                    # Show CLI help
 ```
 
-### Flags
+| Flag | Shorthand | Description |
+| :--- | :--- | :--- |
+| `--refresh` | `-r` | Clear and rebuild the Gradle task cache |
+| `--dry-run` | `-n` | Print Gradle commands to stdout and exit |
+| `--help` | `-h` | Display help menu and command options |
+| `--mode` | N/A | Set execution mode (`sequential` or `parallel`) |
+| `--on-failure` | N/A | Set failure behavior (`stop` or `continue`) |
 
-| Flag                          | Description                                    |
-| ----------------------------- | ---------------------------------------------- |
-| `-r`, `--refresh`             | Force refresh task cache                       |
-| `-n`, `--dry-run`             | Print commands, don't execute                  |
-| `-h`, `--help`                | Show help                                      |
-| `--mode sequential\|parallel` | Execution mode (skip the picker)               |
-| `--on-failure stop\|continue` | Failure handling (skip the picker)             |
+---
 
-### Selector controls
+### Key Bindings
 
-| Key             | Action                  |
-| --------------- | ----------------------- |
-| `↑` / `↓`       | Move cursor             |
-| `j` / `k`       | Move cursor (vim)       |
-| `/`             | Filter list             |
-| `space`         | Toggle selection        |
-| `enter`         | Confirm                 |
-| `ctrl-c` / `q`  | Quit                    |
+#### 1. Selection Menu
+| Key | Action |
+| :--- | :--- |
+| `↑` / `↓` or `j` / `k` | Navigate tasks list |
+| `/` | Enter filter/search mode |
+| `space` | Toggle selection checkmark |
+| `enter` | Confirm selections and proceed |
+| `esc` | Contextual exit (Input focus ➔ Filter reset ➔ Quit) |
+| `s` | Open settings panel |
+| `t` | Cycle UI color themes |
 
-### Mode picker (only when `--mode`/`--on-failure` aren't passed)
+#### 2. Running & Log Viewport
+| Key | Action |
+| :--- | :--- |
+| `Mouse Scroll` | Scroll the log viewport up or down |
+| `↑` / `↓` or `j` / `k` | Scroll log by 1 line |
+| `ctrl+u` / `ctrl+d` | Scroll log by 5 lines |
+| `PgUp` / `PgDn` | Scroll log by half viewport |
+| `q` or `ctrl+c` | Stop running (Skips remaining tasks) |
 
-```
-Run how?
-  [s]equential   one at a time, full-screen log per task
-  [p]arallel     all at once, combined output
+---
 
-On failure?
-  [s]top         stop after first failure
-  [c]ontinue    run all tasks, summarize at end
-```
-
-### Running controls
-
-| Key             | Action                                                  |
-| --------------- | ------------------------------------------------------- |
-| `PgUp` / `PgDn` | Scroll log                                              |
-| `q`             | Stop running (sequential: skip remaining; parallel: stop) |
-
-When `stop` is chosen and a task fails, you get:
+## 🛠️ Architecture
 
 ```
-── :backend:auth:test FAILED after 00:42 ──
-  > Task :backend:auth:test FAILED
-  ...
-─────────────────────────────────────────────
- 1/3   ✔ 1   ✘ 1     [s]kip  [r]etry  [q]uit
+                       ┌─────────────────────────┐
+                       │       Args & CLI        │
+                       └────────────┬────────────┘
+                                    ▼
+                       ┌─────────────────────────┐
+                       │    Gradle Discovery     │ (Locates gradlew)
+                       └────────────┬────────────┘
+                                    ▼
+                       ┌─────────────────────────┐
+                       │    Cache Validation     │ (.gradle/igradle_cache.txt)
+                       └────────────┬────────────┘
+                                    ▼
+                       ┌─────────────────────────┐
+                       │     Fuzzy Task List     │ (Select tasks to run)
+                       └────────────┬────────────┘
+                                    ▼
+                       ┌─────────────────────────┐
+                       │   Subprocess Spawning   │ (Parallel/Sequential)
+                       └──────┬───────────┬──────┘
+                              │           │
+                 ┌────────────▼───┐   ┌───▼────────────┐
+                 │  stdout Stream │   │  stderr Stream │
+                 └────────────┬───┘   └───┬────────────┘
+                              │           │
+                              └─────┬─────┘
+                                    ▼
+                       ┌─────────────────────────┐
+                       │  Thread-Safe Buffer     │ (Ring Buffer / Drop-on-Full)
+                       └────────────┬────────────┘
+                                    ▼
+                       ┌─────────────────────────┐
+                       │   Bubble Tea Renderer   │ (60Hz viewport paint)
+                       └─────────────────────────┘
 ```
 
-## Architecture (v2)
+### Subprocess Log Streaming
+Logs are streamed from Gradle subprocesses asynchronously using thread-safe Ring Buffers (5000-line capacity). A drop-on-full channel buffer keeps the subprocesses from blocking on I/O. The TUI coalesces updates at 60Hz via a `tea.Tick(16ms)` loop to maintain high performance with minimal CPU utilization.
 
-```
-main.go                       ~ 750 lines, 10 sections
-  1. Arg parsing              — flag.NewFlagSet + --mode/--on-failure
-  2. Gradle discovery         — gradlew/gradlew.bat lookup
-  3. Cache management         — .gradle/igradle_cache.txt, staleness check
-  4. Task parsing             — group regex + module path splitting
-  5. Ring buffer              — 5000-line drop-oldest log buffer
-  6. Streaming subprocess     — bounded chan + tea.Program.Send
-  7. Bubble Tea model         — 8 model states, per-task state
-  8. View                     — header + viewport + status bar
-  9. List delegate            — selector rendering
- 10. Main                     — wire it all together
-Makefile                      — build, build-all (6 platforms), install
-go.mod                        — bubbles, bubbletea, lipgloss
-```
+---
 
-### Streaming pattern
+## 📄 License
 
-`runOneTask` returns `<-chan tea.Msg`. Two reader goroutines (stdout + stderr) feed a **1024-buffer channel** with drop-on-full. The first message is returned inline as the `tea.Cmd`'s value. A long-lived goroutine then drains the rest and calls `programRef.Send` for each line. The TUI collects them in a `ringBuffer` (cap 5000) and coalesces viewport repaints at 60Hz via a `tea.Tick(16ms)`.
-
-```
-gradle ──┬─stdout──► scanner ──┐
-         │                     ├─► chan tea.Msg (cap 1024, drop-full) ─► programRef.Send ─► Update
-         └─stderr──► scanner ──┘                                                   └─► ringBuffer.push
-                                                                                     └─► 60Hz flushTick → viewport repaint
-```
-
-### Model states
-
-```
-stateLoading ─► stateReady ─► stateConfirmCount (≥5 tasks)
-                            └► stateModePicker ─► stateRunning ─► stateSummary
-                                                  └► stateFailed ─► stateRunning (retry/skip) ─► stateSummary
-```
-
-### Per-task status
-
-`taskRun` carries its own spinner and `ringBuffer`. The header row for each task reflects state:
-
-| State     | Glyph             |
-| --------- | ----------------- |
-| pending   | `○ `              |
-| running   | `⠋ ` (animated)   |
-| done      | `✔ `              |
-| failed    | `✘ `              |
-| skipped   | `— `              |
-
-## Notes
-
-- Cache format changed from v1: now `raw\tmodule\tgroup\tdesc\n` (4 fields, tab-separated). Old fish caches are ignored — first v2 run regenerates them.
-- `gradlew.bat` is preferred on Windows; `gradlew` elsewhere.
-- `cmd.WaitDelay = 10s` is set so a stuck child process can't pin us forever.
-- `programRef.Send` is unbuffered; the streaming channel drops on full to keep the subprocess from blocking on backpressure.
-
-## License
-
-MIT (or whatever you pick — this started as a personal port).
+This project is licensed under the MIT License - see the `LICENSE` file for details.
