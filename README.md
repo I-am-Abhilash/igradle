@@ -10,7 +10,9 @@
 
 An interactive, high-performance **Gradle task launcher & real-time monitoring dashboard** built in Go. Optimized for narrow, tall terminal configurations, `igradle` provides a unified split-screen monitoring dashboard that lets you search, multi-select, and execute Gradle tasks with live streaming output and dynamic system telemetry.
 
-![igradle demo](assets/igradle.mp4)
+
+https://github.com/user-attachments/assets/39603058-9e78-4765-bbb7-c05be1f618f7
+
 
 ---
 
