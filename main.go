@@ -1003,11 +1003,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			t.state = runFailed
 			m.failed++
-			t.log.push(fmt.Sprintf("\n%s", lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusBad)).Render("❌ BUILD FAILED")))
 		} else {
 			t.state = runDone
 			m.passed++
-			t.log.push(fmt.Sprintf("\n%s", lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusOK)).Render("✨ BUILD SUCCESSFUL")))
 
 			// Save the final sub-task count back to config
 			if t.subtaskCount > 0 {
@@ -1024,7 +1022,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.chosenMode {
 		case modeParallel:
 			if m.allDone() {
-				m.state = stateSummary
+				if m.failed > 0 {
+					m.state = stateFailed
+				} else {
+					m.state = stateRunning
+				}
 			}
 		case modeSequential:
 			if msg.err != nil && m.chosenFail == failStop {
@@ -1034,7 +1036,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.cursor++
 			if m.cursor >= len(m.tasks) {
-				m.state = stateSummary
+				if m.failed > 0 {
+					m.state = stateFailed
+				} else {
+					m.state = stateRunning
+				}
 			} else {
 				m.tasks[m.cursor].state = runRunning
 				m.tasks[m.cursor].started = time.Now()
@@ -1249,7 +1255,33 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case stateRunning:
+			if m.allDone() {
+				switch msg.String() {
+				case "up", "k":
+					m.vp.LineUp(1)
+					return m, nil
+				case "down", "j":
+					m.vp.LineDown(1)
+					return m, nil
+				case "pgup":
+					m.vp.HalfViewUp()
+					return m, nil
+				case "pgdown":
+					m.vp.HalfViewDown()
+					return m, nil
+				case "q", "ctrl+c", "esc", "enter":
+					return m, tea.Quit
+				}
+				return m, nil
+			}
+
 			switch msg.String() {
+			case "up", "k":
+				m.vp.LineUp(1)
+				return m, nil
+			case "down", "j":
+				m.vp.LineDown(1)
+				return m, nil
 			case "pgup":
 				m.vp.HalfViewUp()
 				return m, nil
@@ -1261,19 +1293,59 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for i := m.cursor + 1; i < len(m.tasks); i++ {
 					m.tasks[i].state = runSkipped
 				}
-				m.state = stateSummary
+				if m.failed > 0 {
+					m.state = stateFailed
+				} else {
+					m.state = stateRunning
+				}
 				return m, nil
 			}
 
 		case stateFailed:
+			if m.allDone() {
+				switch msg.String() {
+				case "up", "k":
+					m.vp.LineUp(1)
+					return m, nil
+				case "down", "j":
+					m.vp.LineDown(1)
+					return m, nil
+				case "pgup":
+					m.vp.HalfViewUp()
+					return m, nil
+				case "pgdown":
+					m.vp.HalfViewDown()
+					return m, nil
+				case "q", "ctrl+c", "esc", "enter":
+					return m, tea.Quit
+				}
+				return m, nil
+			}
+
 			switch msg.String() {
+			case "up", "k":
+				m.vp.LineUp(1)
+				return m, nil
+			case "down", "j":
+				m.vp.LineDown(1)
+				return m, nil
+			case "pgup":
+				m.vp.HalfViewUp()
+				return m, nil
+			case "pgdown":
+				m.vp.HalfViewDown()
+				return m, nil
 			case "s": // skip
 				m.failedAt++
 				for m.failedAt < len(m.tasks) && m.tasks[m.failedAt].state != runPending {
 					m.failedAt++
 				}
 				if m.failedAt >= len(m.tasks) {
-					m.state = stateSummary
+					if m.failed > 0 {
+						m.state = stateFailed
+					} else {
+						m.state = stateRunning
+					}
 					return m, nil
 				}
 				m.tasks[m.failedAt].state = runRunning
@@ -1289,7 +1361,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateRunning
 				return m, m.spawnTask(m.failedAt)
 			case "ctrl+c", "q":
-				m.state = stateSummary
+				// cancel remaining
+				for i := m.cursor + 1; i < len(m.tasks); i++ {
+					m.tasks[i].state = runSkipped
+				}
+				m.state = stateFailed
 				return m, nil
 			}
 		case stateSummary:
@@ -1477,32 +1553,9 @@ var (
 func (m *model) View() string {
 	switch m.state {
 	case stateLoading:
-		logoText := `  ____               _ _
- / ___|_ __ __ _  __| | | ___
-| |  _| '__/ _' |/ _' | |/ _ \
-| |_| | | | (_| | (_| | |  __/
- \____|_|  \__,_|\__,_|_|\___|`
-		gradientLogo := renderGradient(logoText, "#209BC4", "#02A882")
-
-		versionStyle := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Background(lipgloss.Color("#209BC4")).
-			Padding(0, 1)
-		versionLabel := versionStyle.Render("v1.0.0")
-
-		logoLines := strings.Split(gradientLogo, "\n")
-		var b strings.Builder
-		b.WriteString("\n")
-		for _, line := range logoLines {
-			b.WriteString("  " + line + "\n")
-		}
-		b.WriteString("             " + versionLabel + "\n\n")
-
 		spinnerView := m.loadingSpinner.View()
 		loadingText := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.Title)).Render("Fetching Gradle tasks...")
-		b.WriteString(fmt.Sprintf("  %s %s\n", spinnerView, loadingText))
-		return b.String()
+		return fmt.Sprintf("\n  %s %s\n", spinnerView, loadingText)
 
 	case stateReady:
 		return m.list.View()
@@ -1542,8 +1595,46 @@ func (m *model) View() string {
 
 	case stateRunning, stateFailed:
 		var b strings.Builder
-		b.WriteString(m.renderHeader())
+		
+		logoText := `  ____               _ _
+ / ___|_ __ __ _  __| | | ___
+| |  _| '__/ _' |/ _' | |/ _ \
+| |_| | | | (_| | (_| | |  __/
+ \____|_|  \__,_|\__,_|_|\___|`
+		gradientLogo := renderGradient(logoText, "#209BC4", "#02A882")
+
+		versionStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#209BC4")).
+			Padding(0, 1)
+		versionLabel := versionStyle.Render("v1.0.0")
+
+		logoLines := strings.Split(gradientLogo, "\n")
 		b.WriteString("\n")
+		for _, line := range logoLines {
+			b.WriteString("  " + line + "\n")
+		}
+		b.WriteString("             " + versionLabel + "\n\n")
+
+		b.WriteString(m.renderHeader())
+		b.WriteString("\n\n")
+
+		// Display build success/failure below tasks section
+		completedTasks := m.passed + m.failed
+		totalTasks := len(m.tasks)
+		if completedTasks == totalTasks {
+			if m.failed > 0 {
+				b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusBad)).Render("❌ BUILD FAILED") + "\n\n")
+			} else {
+				b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusOK)).Render("✨ BUILD SUCCESSFUL") + "\n\n")
+			}
+		} else if m.state == stateFailed {
+			b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusBad)).Render("❌ BUILD FAILED") + "\n\n")
+		} else {
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Spinner)).Render("● Building...") + "\n\n")
+		}
+
 		b.WriteString(m.vp.View())
 		b.WriteString("\n")
 		b.WriteString(m.renderProgressBar())
