@@ -534,13 +534,13 @@ type Theme struct {
 var Themes = []Theme{
 	{
 		Name:      "Default",
-		Title:     "212",
-		Module:    "35",
-		TaskName:  "82",
-		StatusOK:  "82",
-		StatusBad: "196",
-		Spinner:   "63",
-		Muted:     "244",
+		Title:     "#209BC4",
+		Module:    "#02A882",
+		TaskName:  "#209BC4",
+		StatusOK:  "#02A882",
+		StatusBad: "#FF5555",
+		Spinner:   "#209BC4",
+		Muted:     "#7F848E",
 	},
 	{
 		Name:      "Dracula",
@@ -725,8 +725,13 @@ func analyzeProject(root string, cmdPath string) projectInfo {
 				info.KotlinVersion = strings.TrimSpace(strings.TrimPrefix(line, "Kotlin:"))
 			} else if strings.HasPrefix(line, "Groovy:") {
 				info.GroovyVersion = strings.TrimSpace(strings.TrimPrefix(line, "Groovy:"))
-			} else if strings.HasPrefix(line, "JVM:") {
-				jvmPart := strings.TrimSpace(strings.TrimPrefix(line, "JVM:"))
+			} else if strings.HasPrefix(line, "JVM:") || strings.HasPrefix(line, "Launcher JVM:") {
+				var jvmPart string
+				if strings.HasPrefix(line, "JVM:") {
+					jvmPart = strings.TrimSpace(strings.TrimPrefix(line, "JVM:"))
+				} else {
+					jvmPart = strings.TrimSpace(strings.TrimPrefix(line, "Launcher JVM:"))
+				}
 				parts := strings.Split(jvmPart, " ")
 				if len(parts) > 0 {
 					info.JvmVersion = parts[0]
@@ -853,6 +858,8 @@ type model struct {
 	failedAt   int // index of task that failed in stop mode
 	logsDirty  bool
 	lastFlush  time.Time
+	buildStarted time.Time
+	buildEnded   time.Time
 
 	// viewport for the live log
 	vp viewport.Model
@@ -1087,12 +1094,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		var c tea.Cmd
+		m.vp, c = m.vp.Update(msg)
+		if c != nil {
+			cmds = append(cmds, c)
+		}
+		return m, tea.Batch(cmds...)
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.list.SetSize(msg.Width, msg.Height-4)
+		m.list.SetSize(msg.Width, msg.Height)
 		leftWidth := m.getLeftColumnWidth()
-		m.vp.Width = msg.Width - leftWidth - 5
+		m.vp.Width = msg.Width - leftWidth - 9
 		if m.vp.Width < 20 {
 			m.vp.Width = 20
 		}
@@ -1205,11 +1220,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.state = stateRunning
 				}
+				if m.buildEnded.IsZero() {
+					m.buildEnded = time.Now()
+				}
 			}
 		case modeSequential:
 			if msg.err != nil && m.chosenFail == failStop {
 				m.state = stateFailed
 				m.failedAt = msg.taskIdx
+				if m.buildEnded.IsZero() {
+					m.buildEnded = time.Now()
+				}
 				return m, nil
 			}
 			m.cursor++
@@ -1218,6 +1239,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = stateFailed
 				} else {
 					m.state = stateRunning
+				}
+				if m.buildEnded.IsZero() {
+					m.buildEnded = time.Now()
 				}
 			} else {
 				m.tasks[m.cursor].state = runRunning
@@ -1237,6 +1261,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var c tea.Cmd
 				m.list, c = m.list.Update(msg)
 				return m, c
+			}
+			if m.list.FilterState() == list.FilterApplied && msg.String() == "esc" {
+				m.list.ResetFilter()
+				return m, nil
 			}
 			switch msg.String() {
 			case "ctrl+c", "esc", "q":
@@ -1441,6 +1469,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "down", "j":
 					m.vp.LineDown(1)
 					return m, nil
+				case "shift+up", "ctrl+u":
+					m.vp.LineUp(5)
+					return m, nil
+				case "shift+down", "ctrl+d":
+					m.vp.LineDown(5)
+					return m, nil
 				case "pgup":
 					m.vp.HalfViewUp()
 					return m, nil
@@ -1459,6 +1493,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "down", "j":
 				m.vp.LineDown(1)
+				return m, nil
+			case "shift+up", "ctrl+u":
+				m.vp.LineUp(5)
+				return m, nil
+			case "shift+down", "ctrl+d":
+				m.vp.LineDown(5)
 				return m, nil
 			case "pgup":
 				m.vp.HalfViewUp()
@@ -1488,6 +1528,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "down", "j":
 					m.vp.LineDown(1)
 					return m, nil
+				case "shift+up", "ctrl+u":
+					m.vp.LineUp(5)
+					return m, nil
+				case "shift+down", "ctrl+d":
+					m.vp.LineDown(5)
+					return m, nil
 				case "pgup":
 					m.vp.HalfViewUp()
 					return m, nil
@@ -1506,6 +1552,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "down", "j":
 				m.vp.LineDown(1)
+				return m, nil
+			case "shift+up", "ctrl+u":
+				m.vp.LineUp(5)
+				return m, nil
+			case "shift+down", "ctrl+d":
+				m.vp.LineDown(5)
 				return m, nil
 			case "pgup":
 				m.vp.HalfViewUp()
@@ -1548,6 +1600,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case stateSummary:
 			switch msg.String() {
+			case "up", "k":
+				m.vp.LineUp(1)
+				return m, nil
+			case "down", "j":
+				m.vp.LineDown(1)
+				return m, nil
+			case "shift+up", "ctrl+u":
+				m.vp.LineUp(5)
+				return m, nil
+			case "shift+down", "ctrl+d":
+				m.vp.LineDown(5)
+				return m, nil
+			case "pgup":
+				m.vp.HalfViewUp()
+				return m, nil
+			case "pgdown":
+				m.vp.HalfViewDown()
+				return m, nil
 			case "q", "ctrl+c", "enter", "esc":
 				return m, tea.Quit
 			}
@@ -1664,6 +1734,8 @@ func (m *model) beginRun() tea.Cmd {
 
 func (m *model) kickoffRun() tea.Cmd {
 	m.state = stateRunning
+	m.buildStarted = time.Now()
+	m.buildEnded = time.Time{}
 	m.vp.GotoBottom()
 	return tea.Batch(m.startFirst(), flushEvery())
 }
@@ -1692,8 +1764,9 @@ func (m *model) refreshViewport() {
 			b.WriteString("(waiting for output…)\n")
 		}
 	}
-	m.vp.SetContent(b.String())
-	if m.vp.AtBottom() {
+	wasAtBottom := m.vp.AtBottom()
+	m.vp.SetContent(strings.TrimSuffix(b.String(), "\n"))
+	if wasAtBottom {
 		m.vp.GotoBottom()
 	}
 	m.logsDirty = false
@@ -1966,19 +2039,24 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 	if !ok {
 		return
 	}
+	cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(d.theme.Title))
+	checkedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(d.theme.StatusOK))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(d.theme.Muted))
+
 	cursor := "  "
 	if index == m.Index() {
-		cursor = "▸ "
+		cursor = cursorStyle.Render("▸ ")
 	}
 	checked := " "
 	if _, ok := selectedSet[ti.rawName]; ok {
-		checked = "✔"
+		checked = checkedStyle.Render("✔")
 	}
 	module := lipgloss.NewStyle().Foreground(lipgloss.Color(d.theme.Module)).Render(fmt.Sprintf("[%s]", ti.module))
 	short := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(d.theme.TaskName)).Render(ti.short)
 	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(d.theme.Muted))
 	numStr := numStyle.Render(fmt.Sprintf("%-3s", fmt.Sprintf("%d.", index+1)))
-	fmt.Fprintf(w, "%s%s %s %s %s — %s", cursor, checked, numStr, module, short, ti.desc)
+	descStr := descStyle.Render(ti.desc)
+	fmt.Fprintf(w, "%s%s %s %s %s — %s", cursor, checked, numStr, module, short, descStr)
 }
 
 func interpolateColor(ratio float64) string {
@@ -2003,15 +2081,10 @@ func (m *model) renderProgressBar() string {
 
 	var totalSubtasksCount int
 	var totalSubtasksExpected int
-	var currentRunningTaskSubtask string
-
 	for _, t := range m.tasks {
 		if t.state == runRunning {
 			totalSubtasksCount += t.subtaskCount
 			totalSubtasksExpected += t.subtaskTotal
-			if t.currentSubtask != "" {
-				currentRunningTaskSubtask = t.currentSubtask
-			}
 		} else if t.state == runDone {
 			totalSubtasksCount += t.subtaskCount
 			totalSubtasksExpected += t.subtaskCount
@@ -2051,10 +2124,10 @@ func (m *model) renderProgressBar() string {
 		for x := -6; x <= 6; x++ {
 			gridX := x + 6
 			
-			xAdjusted := float64(x) * 0.55
+			xAdjusted := float64(x) * 0.52
 			dist := math.Sqrt(xAdjusted*xAdjusted + float64(y)*float64(y))
 
-			if dist >= 2.5 && dist <= 3.8 {
+			if dist >= 2.3 && dist <= 3.6 {
 				angle := math.Atan2(float64(y), xAdjusted) + math.Pi/2
 				if angle < 0 {
 					angle += 2 * math.Pi
@@ -2091,22 +2164,30 @@ func (m *model) renderProgressBar() string {
 	completedPercent := int(percent * 100)
 	
 	panelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted))
-	valStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.Title))
-	spinnerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Spinner))
 
-	activeSubtaskText := "None"
-	if currentRunningTaskSubtask != "" && completedTasks < totalTasks {
-		activeSubtaskText = currentRunningTaskSubtask
-	} else if completedTasks == totalTasks {
-		activeSubtaskText = "Finished"
+
+	var elapsed time.Duration
+	if !m.buildEnded.IsZero() {
+		elapsed = m.buildEnded.Sub(m.buildStarted)
+	} else if !m.buildStarted.IsZero() {
+		elapsed = time.Since(m.buildStarted)
 	}
+	elapsedStr := elapsed.Round(time.Second).String()
+
+	osVersion := getOSVersion()
+	daemonMem := getGradleDaemonMemory()
+
+	brandBlueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#209BC4"))
+	brandTealStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#02A882"))
 
 	panelLines := []string{
-		lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color(m.theme.Title)).Render("Build Progress Panel"),
-		fmt.Sprintf("  %s %s", panelStyle.Render("Percent Complete :"), valStyle.Render(fmt.Sprintf("%d%%", completedPercent))),
-		fmt.Sprintf("  %s %s", panelStyle.Render("Tasks Processed  :"), valStyle.Render(fmt.Sprintf("%d / %d completed", completedTasks, totalTasks))),
-		fmt.Sprintf("  %s %s", panelStyle.Render("Sub-task Metrics :"), valStyle.Render(fmt.Sprintf("%d / %d executed", totalSubtasksCount, totalSubtasksExpected))),
-		fmt.Sprintf("  %s %s", panelStyle.Render("Active Sub-task  :"), spinnerStyle.Render(activeSubtaskText)),
+		brandBlueStyle.Copy().Underline(true).Render("Build Progress Panel"),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Percent Complete :"), brandTealStyle.Render(fmt.Sprintf("%d%%", completedPercent))),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Tasks Processed  :"), brandBlueStyle.Render(fmt.Sprintf("%d / %d completed", completedTasks, totalTasks))),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Sub-task Metrics :"), brandTealStyle.Render(fmt.Sprintf("%d / %d executed", totalSubtasksCount, totalSubtasksExpected))),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Elapsed Time     :"), brandBlueStyle.Render(elapsedStr)),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Gradle Daemon OS :"), brandTealStyle.Render(osVersion)),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Gradle Daemons   :"), brandBlueStyle.Render(daemonMem)),
 		"",
 	}
 
@@ -2208,7 +2289,6 @@ func (m *model) renderTopHeader() string {
 
 	gradleVer := m.projInfo.GradleVersion
 	kotlinVer := m.projInfo.KotlinVersion
-	groovyVer := m.projInfo.GroovyVersion
 	jvmVer := m.projInfo.JvmVersion
 	modulesStr := fmt.Sprintf("%d", m.projInfo.ModuleCount)
 	locStr := fmt.Sprintf("%d", m.projInfo.LinesOfCode)
@@ -2229,7 +2309,7 @@ func (m *model) renderTopHeader() string {
 	infoLines := []string{
 		fmt.Sprintf("    %s %s", infoStyle.Render("Gradle Version :"), valStyle.Render(gradleVer)),
 		fmt.Sprintf("    %s %s", infoStyle.Render("Kotlin Version :"), valStyle.Render(kotlinVer)),
-		fmt.Sprintf("    %s %s / %s", infoStyle.Render("Groovy / JVM   :"), valStyle.Render(groovyVer), valStyle.Render(jvmVer)),
+		fmt.Sprintf("    %s %s", infoStyle.Render("JVM Version    :"), valStyle.Render("JDK "+jvmVer)),
 		fmt.Sprintf("    %s %s", infoStyle.Render("Modules / LOC  :"), valStyle.Render(fmt.Sprintf("%s modules / %s lines", modulesStr, locStr))),
 		fmt.Sprintf("    %s %s / %s", infoStyle.Render("Source Files   :"), valStyle.Render(fmt.Sprintf("%d Java", m.projInfo.JavaCount)), valStyle.Render(fmt.Sprintf("%d Kotlin", m.projInfo.KotlinCount))),
 	}
@@ -2256,6 +2336,114 @@ func (m *model) renderTopHeader() string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+var (
+	osVersionOnce sync.Once
+	osVersionText string
+)
+
+func getOSVersion() string {
+	osVersionOnce.Do(func() {
+		if runtime.GOOS == "linux" {
+			file, err := os.Open("/etc/os-release")
+			if err == nil {
+				defer file.Close()
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					line := scanner.Text()
+					if strings.HasPrefix(line, "PRETTY_NAME=") {
+						parts := strings.SplitN(line, "=", 2)
+						if len(parts) == 2 {
+							osVersionText = strings.Trim(parts[1], `"` + "`")
+							return
+						}
+					}
+				}
+			}
+			out, err := exec.Command("uname", "-sr").Output()
+			if err == nil {
+				osVersionText = strings.TrimSpace(string(out))
+				return
+			}
+			osVersionText = "Linux"
+		} else if runtime.GOOS == "darwin" {
+			out, err := exec.Command("sw_vers", "-productVersion").Output()
+			if err == nil {
+				osVersionText = "macOS " + strings.TrimSpace(string(out))
+				return
+			}
+			osVersionText = "macOS"
+		} else {
+			osVersionText = runtime.GOOS
+		}
+	})
+	return osVersionText
+}
+
+func getGradleDaemonMemory() string {
+	if runtime.GOOS == "linux" {
+		files, err := filepath.Glob("/proc/[0-9]*/cmdline")
+		if err != nil {
+			return "Unknown"
+		}
+		var totalRSS int64
+		var count int
+		for _, f := range files {
+			content, err := os.ReadFile(f)
+			if err != nil {
+				continue
+			}
+			cmd := string(content)
+			if strings.Contains(cmd, "GradleDaemon") {
+				dir := filepath.Base(filepath.Dir(f))
+				statusPath := filepath.Join("/proc", dir, "status")
+				statusContent, err := os.ReadFile(statusPath)
+				if err == nil {
+					scanner := bufio.NewScanner(strings.NewReader(string(statusContent)))
+					for scanner.Scan() {
+						line := scanner.Text()
+						if strings.HasPrefix(line, "VmRSS:") {
+							fields := strings.Fields(line)
+							if len(fields) >= 2 {
+								var kb int64
+								fmt.Sscanf(fields[1], "%d", &kb)
+								totalRSS += kb
+								count++
+							}
+						}
+					}
+				}
+			}
+		}
+		if count == 0 {
+			return "No Daemon"
+		}
+		return fmt.Sprintf("%d MB (%d daemons)", totalRSS/1024, count)
+	} else if runtime.GOOS == "darwin" {
+		out, err := exec.Command("ps", "-eo", "rss,command").Output()
+		if err == nil {
+			lines := strings.Split(string(out), "\n")
+			var totalRSS int64
+			var count int
+			for _, line := range lines {
+				if strings.Contains(line, "GradleDaemon") && !strings.Contains(line, "grep") {
+					fields := strings.Fields(line)
+					if len(fields) >= 2 {
+						var kb int64
+						fmt.Sscanf(fields[0], "%d", &kb)
+						totalRSS += kb
+						count++
+					}
+				}
+			}
+			if count > 0 {
+				return fmt.Sprintf("%d MB (%d daemons)", totalRSS/1024, count)
+			}
+		}
+		return "No Daemon"
+	}
+	return "Unknown"
 }
 
 func (m *model) getLeftColumnWidth() int {
@@ -2305,7 +2493,7 @@ func (m *model) renderSideBySide(left string, right string, leftWidth int) strin
 			rightPart = rightLines[i]
 		}
 
-		b.WriteString(leftPart + strings.Repeat(" ", padding) + " │ " + rightPart + "\n")
+		b.WriteString(leftPart + strings.Repeat(" ", padding) + "       " + rightPart + "\n")
 	}
 	return b.String()
 }
@@ -2390,7 +2578,7 @@ func main() {
 	cachePath := taskCachePath(root)
 	m := newModel(opts, cmdPath, root, cachePath)
 
-	p := tea.NewProgram(&m, tea.WithAltScreen())
+	p := tea.NewProgram(&m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	programRef = p
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "igradle: %v\n", err)
