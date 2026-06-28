@@ -21,23 +21,23 @@ An interactive, high-performance **Gradle task launcher & real-time monitoring d
 
 ---
 
-## ✨ Features
+##  Features
 
-- 🎯 **Fuzzy Task Selector**: Fuzzy-search, filter, and multi-select tasks across all modules using a clean interactive list.
-- 📦 **Multi-Module Aware**: Automatically parses your project structure and labels tasks with their corresponding module paths.
-- 🚀 **Real-Time Telemetry Dashboard**:
+-  **Fuzzy Task Selector**: Fuzzy-search, filter, and multi-select tasks across all modules using a clean interactive list.
+-  **Multi-Module Aware**: Automatically parses your project structure and labels tasks with their corresponding module paths.
+-  **Real-Time Telemetry Dashboard**:
   - **Live Elapsed Time** tracking.
   - **Gradle Daemon OS Detection** (e.g. Linux, macOS, Windows).
   - **Live Gradle Daemon Memory Monitoring** (RSS usage & daemon instance count).
-- 🔄 **Intelligent Escape-Key Navigation**:
+-  **Intelligent Escape-Key Navigation**:
   - *First Escape* exits filter text input, focusing the list for keyboard navigation (`j`/`k` / arrows).
   - *Second Escape* resets the filter, returning the task list to its initial state.
   - *Third Escape* safely exits the TUI.
-- ⚡ **Auto-Scrolling Log Viewport**: Watch tasks compile, test, or publish in real time with viewport mouse-wheel support and page/half-page keyboard scrolling. Includes auto-scroll pause when reviewing logs up-viewport.
-- 🎨 **Unified Brand Aesthetic**: Styled with a premium palette featuring a custom blue-to-teal gradient.
-- ⚙️ **Dual Execution Modes**: Choose between **Sequential** (running task by task with full logging) and **Parallel** (all tasks concurrently with multiplexed logs).
-- 🛡️ **Flexible Failure Policies**: Choose to stop on the first failure (providing quick Retry/Skip/Quit options) or continue executing other tasks and summarize results at the end.
-- 📁 **Smart Cache Fast-Path**: Walks up the directory tree to locate `gradlew` and caches all project tasks until a build configuration file (`build.gradle`, `build.gradle.kts`, `settings.gradle`) is modified.
+-  **Auto-Scrolling Log Viewport**: Watch tasks compile, test, or publish in real time with viewport mouse-wheel support and page/half-page keyboard scrolling. Includes auto-scroll pause when reviewing logs up-viewport.
+-  **Unified Brand Aesthetic**: Styled with a premium palette featuring a custom blue-to-teal gradient.
+-  **Dual Execution Modes**: Choose between **Sequential** (running task by task with full logging) and **Parallel** (all tasks concurrently with multiplexed logs).
+-  **Flexible Failure Policies**: Choose to stop on the first failure (providing quick Retry/Skip/Quit options) or continue executing other tasks and summarize results at the end.
+-  **Smart Cache Fast-Path**: Walks up the directory tree to locate `gradlew` and caches all project tasks until a build configuration file (`build.gradle`, `build.gradle.kts`, `settings.gradle`) is modified.
 
 ---
 
