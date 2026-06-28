@@ -44,10 +44,9 @@ An interactive, high-performance **Gradle task launcher & real-time monitoring d
 ## 📥 Installation
 
 ### 1. Homebrew (macOS & Linux)
-Install `igradle` easily via Homebrew:
+Install `igradle` in a single command via Homebrew:
 ```bash
-brew tap I-am-Abhilash/tap
-brew install igradle
+brew install I-am-Abhilash/tap/igradle
 ```
 
 ### 2. Direct Go Install
