@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -667,6 +668,165 @@ type taskRun struct {
 	currentSubtask string
 }
 
+type projectInfo struct {
+	GradleVersion string
+	KotlinVersion string
+	GroovyVersion string
+	JvmVersion    string
+	LinesOfCode   int
+	ModuleCount   int
+	JavaCount     int
+	KotlinCount   int
+}
+
+type projectInfoMsg struct {
+	info projectInfo
+}
+
+func fetchProjectInfoCmd(root string, cmdPath string) tea.Cmd {
+	return func() tea.Msg {
+		return projectInfoMsg{info: analyzeProject(root, cmdPath)}
+	}
+}
+
+func analyzeProject(root string, cmdPath string) projectInfo {
+	info := projectInfo{
+		GradleVersion: "Unknown",
+		KotlinVersion: "None",
+		GroovyVersion: "None",
+		JvmVersion:    "Unknown",
+	}
+
+	// 1. Gradle Version from Wrapper properties (as a fast fallback/first guess)
+	wrapperPath := filepath.Join(root, "gradle", "wrapper", "gradle-wrapper.properties")
+	if data, err := os.ReadFile(wrapperPath); err == nil {
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "distributionUrl") {
+				re := regexp.MustCompile(`gradle-([0-9.]+)-(all|bin)\.zip`)
+				matches := re.FindStringSubmatch(line)
+				if len(matches) > 1 {
+					info.GradleVersion = matches[1]
+				}
+			}
+		}
+	}
+
+	// Run gradle/gradlew -v inside root to query version details (Gradle, Kotlin, Groovy, JVM)
+	c := exec.Command(cmdPath, "-v")
+	c.Dir = root
+	if output, err := c.Output(); err == nil {
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "Gradle ") {
+				info.GradleVersion = strings.TrimSpace(strings.TrimPrefix(line, "Gradle "))
+			} else if strings.HasPrefix(line, "Kotlin:") {
+				info.KotlinVersion = strings.TrimSpace(strings.TrimPrefix(line, "Kotlin:"))
+			} else if strings.HasPrefix(line, "Groovy:") {
+				info.GroovyVersion = strings.TrimSpace(strings.TrimPrefix(line, "Groovy:"))
+			} else if strings.HasPrefix(line, "JVM:") {
+				jvmPart := strings.TrimSpace(strings.TrimPrefix(line, "JVM:"))
+				parts := strings.Split(jvmPart, " ")
+				if len(parts) > 0 {
+					info.JvmVersion = parts[0]
+				}
+			}
+		}
+	}
+
+	// 2. Count Modules in settings.gradle (.kts)
+	var settingsContent string
+	if data, err := os.ReadFile(filepath.Join(root, "settings.gradle")); err == nil {
+		settingsContent = string(data)
+	} else if data, err := os.ReadFile(filepath.Join(root, "settings.gradle.kts")); err == nil {
+		settingsContent = string(data)
+	}
+	if settingsContent != "" {
+		re := regexp.MustCompile(`include\s*\(?\s*['"]:[a-zA-Z0-9_-]+['"]|include\s*['"]:[a-zA-Z0-9_-]+['"]`)
+		matches := re.FindAllString(settingsContent, -1)
+		if len(matches) > 0 {
+			info.ModuleCount = len(matches)
+		} else {
+			lines := strings.Split(settingsContent, "\n")
+			count := 0
+			for _, l := range lines {
+				l = strings.TrimSpace(l)
+				if strings.HasPrefix(l, "include") {
+					count += strings.Count(l, ":")
+					if count == 0 {
+						count += strings.Count(l, ",") + 1
+					}
+				}
+			}
+			if count > 0 {
+				info.ModuleCount = count
+			} else {
+				info.ModuleCount = 1
+			}
+		}
+	} else {
+		info.ModuleCount = 1
+	}
+
+	// 3. Kotlin version & fast Lines of Code count
+	var loc int
+	var javaFiles, kotlinFiles int
+	var kotlinVer string
+
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if name == "build" || name == ".gradle" || name == ".git" || name == "node_modules" || name == ".idea" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		ext := filepath.Ext(path)
+		if ext == ".kt" || ext == ".java" || ext == ".groovy" || ext == ".gradle" || ext == ".kts" {
+			if ext == ".kt" {
+				kotlinFiles++
+			} else if ext == ".java" {
+				javaFiles++
+			}
+			if d.Name() == "build.gradle" || d.Name() == "build.gradle.kts" {
+				if data, err := os.ReadFile(path); err == nil {
+					content := string(data)
+					re := regexp.MustCompile(`kotlin\("[a-zA-Z0-9_-]+"\)\s*version\s*["']([0-9.]+)["']|id\s*["']org\.jetbrains\.kotlin\.[a-zA-Z0-9_.-]+["']\s*version\s*["']([0-9.]+)["']`)
+					m := re.FindStringSubmatch(content)
+					if len(m) > 0 {
+						for _, val := range m[1:] {
+							if val != "" {
+								kotlinVer = val
+							}
+						}
+					}
+				}
+			}
+			if data, err := os.ReadFile(path); err == nil {
+				loc += strings.Count(string(data), "\n")
+			}
+		}
+		return nil
+	})
+
+	info.LinesOfCode = loc
+	info.JavaCount = javaFiles
+	info.KotlinCount = kotlinFiles
+	if info.KotlinVersion == "None" || info.KotlinVersion == "Detected" {
+		if kotlinVer != "" {
+			info.KotlinVersion = kotlinVer
+		} else if kotlinFiles > 0 {
+			info.KotlinVersion = "Detected"
+		}
+	}
+
+	return info
+}
+
 type model struct {
 	state    modelState
 	opts     options
@@ -706,6 +866,9 @@ type model struct {
 
 	// selection set for the multi-select list (see v1 design note)
 	selected []string
+
+	// project analysis info
+	projInfo projectInfo
 }
 
 type itemsLoadedMsg struct {
@@ -859,7 +1022,11 @@ func (m *model) toggleCurrent() {
 }
 
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(m.loadingSpinner.Tick, fetchTasksCmd(m.cmdPath, m.root, m.cachePath, m.opts.refresh))
+	return tea.Batch(
+		m.loadingSpinner.Tick,
+		fetchTasksCmd(m.cmdPath, m.root, m.cachePath, m.opts.refresh),
+		fetchProjectInfoCmd(m.root, m.cmdPath),
+	)
 }
 
 // startFirst kicks off the running state. Either starts all tasks in parallel
@@ -924,10 +1091,21 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.list.SetSize(msg.Width, msg.Height-4)
-		m.vp.Width = msg.Width
-		m.vp.Height = msg.Height - 13 // logo(7) + header(3) + progressbar(2) + statusbar(1)
+		leftWidth := m.getLeftColumnWidth()
+		m.vp.Width = msg.Width - leftWidth - 5
+		if m.vp.Width < 20 {
+			m.vp.Width = 20
+		}
+		m.vp.Height = msg.Height - 10
+		if m.vp.Height < 5 {
+			m.vp.Height = 5
+		}
 		// Repaint the viewport right now.
 		m.refreshViewport()
+
+	case projectInfoMsg:
+		m.projInfo = msg.info
+		return m, nil
 
 	case itemsLoadedMsg:
 		if msg.err != nil {
@@ -1496,7 +1674,7 @@ func (m *model) refreshViewport() {
 		t := m.tasks[m.cursor]
 		fmt.Fprintf(&b, "── %s ──\n", t.name)
 		for _, line := range t.log.snapshot() {
-			fmt.Fprintln(&b, line)
+			fmt.Fprintln(&b, lipgloss.NewStyle().Width(m.vp.Width).Render(line))
 		}
 	} else {
 		// parallel: show the most-recent task that has output.
@@ -1505,7 +1683,7 @@ func (m *model) refreshViewport() {
 			if t.log.size > 0 {
 				fmt.Fprintf(&b, "── %s ──\n", t.name)
 				for _, line := range t.log.snapshot() {
-					fmt.Fprintln(&b, line)
+					fmt.Fprintln(&b, lipgloss.NewStyle().Width(m.vp.Width).Render(line))
 				}
 				break
 			}
@@ -1596,49 +1774,14 @@ func (m *model) View() string {
 	case stateRunning, stateFailed:
 		var b strings.Builder
 		
-		logoText := `  ____               _ _
- / ___|_ __ __ _  __| | | ___
-| |  _| '__/ _' |/ _' | |/ _ \
-| |_| | | | (_| | (_| | |  __/
- \____|_|  \__,_|\__,_|_|\___|`
-		gradientLogo := renderGradient(logoText, "#209BC4", "#02A882")
+		b.WriteString(m.renderTopHeader())
 
-		versionStyle := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Background(lipgloss.Color("#209BC4")).
-			Padding(0, 1)
-		versionLabel := versionStyle.Render("v1.0.0")
-
-		logoLines := strings.Split(gradientLogo, "\n")
+		leftCol := m.renderLeftColumn()
+		rightCol := m.vp.View()
+		leftWidth := m.getLeftColumnWidth()
+		b.WriteString(m.renderSideBySide(leftCol, rightCol, leftWidth))
 		b.WriteString("\n")
-		for _, line := range logoLines {
-			b.WriteString("  " + line + "\n")
-		}
-		b.WriteString("             " + versionLabel + "\n\n")
 
-		b.WriteString(m.renderHeader())
-		b.WriteString("\n\n")
-
-		// Display build success/failure below tasks section
-		completedTasks := m.passed + m.failed
-		totalTasks := len(m.tasks)
-		if completedTasks == totalTasks {
-			if m.failed > 0 {
-				b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusBad)).Render("❌ BUILD FAILED") + "\n\n")
-			} else {
-				b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusOK)).Render("✨ BUILD SUCCESSFUL") + "\n\n")
-			}
-		} else if m.state == stateFailed {
-			b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusBad)).Render("❌ BUILD FAILED") + "\n\n")
-		} else {
-			b.WriteString("  " + lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Spinner)).Render("● Building...") + "\n\n")
-		}
-
-		b.WriteString(m.vp.View())
-		b.WriteString("\n")
-		b.WriteString(m.renderProgressBar())
-		b.WriteString("\n")
 		b.WriteString(m.renderStatus())
 		return b.String()
 
@@ -1748,7 +1891,6 @@ func (m *model) renderHeader() string {
 	statusOKStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.StatusOK))
 	statusBad := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.StatusBad))
 	statusSkipped := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted))
-	headerStyle := lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(lipgloss.Color(m.theme.Spinner))
 
 	for i, t := range m.tasks {
 		var status string
@@ -1775,7 +1917,7 @@ func (m *model) renderHeader() string {
 		rows = append(rows, style.Render(fmt.Sprintf(" %s%-30s%s", status, t.name, elapsed)))
 		_ = i
 	}
-	return headerStyle.Width(m.width).Render(strings.Join(rows, "\n"))
+	return strings.Join(rows, "\n")
 }
 
 func (m *model) renderStatus() string {
@@ -1839,6 +1981,20 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 	fmt.Fprintf(w, "%s%s %s %s %s — %s", cursor, checked, numStr, module, short, ti.desc)
 }
 
+func interpolateColor(ratio float64) string {
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+	// Start: #209BC4 (32, 155, 196) -> End: #02A882 (2, 168, 130)
+	r := int(32 + ratio * (2 - 32))
+	g := int(155 + ratio * (168 - 155))
+	b := int(196 + ratio * (130 - 196))
+	return fmt.Sprintf("#%02X%02X%02X", r, g, b)
+}
+
 func (m *model) renderProgressBar() string {
 	totalTasks := len(m.tasks)
 	if totalTasks == 0 {
@@ -1876,25 +2032,293 @@ func (m *model) renderProgressBar() string {
 		percent = 1.0
 	}
 
-	barWidth := 40
-	filledWidth := int(percent * float64(barWidth))
+	// 1. Generate Circle Progress Grid (7 lines high, 13 columns wide)
+	width := 13
+	height := 7
+	
+	grid := make([][]string, height)
+	for i := range grid {
+		grid[i] = make([]string, width)
+		for j := range grid[i] {
+			grid[i][j] = " "
+		}
+	}
 
-	var bar strings.Builder
-	for i := 0; i < barWidth; i++ {
-		if i < filledWidth {
-			bar.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Title)).Render("█"))
-		} else {
-			bar.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted)).Render("░"))
+	emptyColor := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted))
+
+	for y := -3; y <= 3; y++ {
+		gridY := y + 3
+		for x := -6; x <= 6; x++ {
+			gridX := x + 6
+			
+			xAdjusted := float64(x) * 0.55
+			dist := math.Sqrt(xAdjusted*xAdjusted + float64(y)*float64(y))
+
+			if dist >= 2.5 && dist <= 3.8 {
+				angle := math.Atan2(float64(y), xAdjusted) + math.Pi/2
+				if angle < 0 {
+					angle += 2 * math.Pi
+				}
+
+				if angle <= 2*math.Pi*percent {
+					cHex := interpolateColor(angle / (2 * math.Pi))
+					grid[gridY][gridX] = lipgloss.NewStyle().Foreground(lipgloss.Color(cHex)).Render("█")
+				} else {
+					grid[gridY][gridX] = emptyColor.Render("░")
+				}
+			}
 		}
 	}
 
 	completedTasks := m.passed + m.failed
-	statusText := fmt.Sprintf("  %d%% (%d/%d sub-tasks complete)", int(percent*100), totalSubtasksCount, totalSubtasksExpected)
+
+	// Insert percentage inside circle (Line 3: y=0)
+	pctStr := fmt.Sprintf("%3d%%", int(percent*100))
+	pctStyled := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render(pctStr)
+	insertString(grid[3], pctStr, pctStyled)
+
+	// Insert task count inside circle (Line 2: y=-1)
+	taskStr := fmt.Sprintf("%d/%d", completedTasks, totalTasks)
+	taskStyled := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted)).Render(taskStr)
+	insertString(grid[2], taskStr, taskStyled)
+
+	// Insert label inside circle (Line 4: y=1)
+	lblStr := "tasks"
+	lblStyled := lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color(m.theme.Muted)).Render(lblStr)
+	insertString(grid[4], lblStr, lblStyled)
+
+	// 2. Generate side panel info lines
+	completedPercent := int(percent * 100)
+	
+	panelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted))
+	valStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.Title))
+	spinnerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Spinner))
+
+	activeSubtaskText := "None"
 	if currentRunningTaskSubtask != "" && completedTasks < totalTasks {
-		statusText += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Spinner)).Render(currentRunningTaskSubtask)
+		activeSubtaskText = currentRunningTaskSubtask
+	} else if completedTasks == totalTasks {
+		activeSubtaskText = "Finished"
 	}
 
-	return "  " + bar.String() + statusText
+	panelLines := []string{
+		lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color(m.theme.Title)).Render("Build Progress Panel"),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Percent Complete :"), valStyle.Render(fmt.Sprintf("%d%%", completedPercent))),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Tasks Processed  :"), valStyle.Render(fmt.Sprintf("%d / %d completed", completedTasks, totalTasks))),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Sub-task Metrics :"), valStyle.Render(fmt.Sprintf("%d / %d executed", totalSubtasksCount, totalSubtasksExpected))),
+		fmt.Sprintf("  %s %s", panelStyle.Render("Active Sub-task  :"), spinnerStyle.Render(activeSubtaskText)),
+		"",
+	}
+
+	/*
+	// Append tasks list
+	taskHeader := lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color(m.theme.Title)).Render("Tasks List:")
+	panelLines = append(panelLines, taskHeader)
+
+	statusOKStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.StatusOK))
+	statusBad := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.StatusBad))
+	statusSkipped := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted))
+
+	for _, t := range m.tasks {
+		var status string
+		var style lipgloss.Style
+		switch t.state {
+		case runPending:
+			status, style = "○ ", lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted))
+		case runRunning:
+			status = t.spinner.View() + " "
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Spinner))
+		case runDone:
+			status, style = "✔ ", statusOKStyle
+		case runFailed:
+			status, style = "✘ ", statusBad
+		case runSkipped:
+			status, style = "— ", statusSkipped
+		}
+		elapsed := ""
+		if t.state == runRunning {
+			elapsed = fmt.Sprintf("  %s", time.Since(t.started).Round(time.Second))
+		} else if t.state == runDone || t.state == runFailed {
+			elapsed = fmt.Sprintf("  %s", t.elapsed.Round(time.Second))
+		}
+		
+		taskLine := style.Render(fmt.Sprintf(" %s%-24s%s", status, t.name, elapsed))
+		panelLines = append(panelLines, taskLine)
+	}
+
+	panelLines = append(panelLines, "")
+
+	var statusLine string
+	if completedTasks == totalTasks {
+		if m.failed > 0 {
+			statusLine = "  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusBad)).Render("❌ BUILD FAILED")
+		} else {
+			statusLine = "  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusOK)).Render("✨ BUILD SUCCESSFUL")
+		}
+	} else if m.state == stateFailed {
+		statusLine = "  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.StatusBad)).Render("❌ BUILD FAILED")
+	} else {
+		statusLine = "  " + lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Spinner)).Render("● Building...")
+	}
+	panelLines = append(panelLines, statusLine)
+	*/
+
+	// 3. Assemble circle and panel side-by-side
+	var builder strings.Builder
+	maxHeight := height
+	if len(panelLines) > maxHeight {
+		maxHeight = len(panelLines)
+	}
+
+	for i := 0; i < maxHeight; i++ {
+		circleRow := "             " // 13 spaces
+		if i < height {
+			var circleRowBuilder strings.Builder
+			for _, cell := range grid[i] {
+				circleRowBuilder.WriteString(cell)
+			}
+			circleRow = circleRowBuilder.String()
+		}
+		
+		panelPart := ""
+		if i < len(panelLines) {
+			panelPart = panelLines[i]
+		}
+		
+		builder.WriteString("  " + circleRow + "    " + panelPart)
+		if i < maxHeight-1 {
+			builder.WriteString("\n")
+		}
+	}
+
+	return builder.String()
+}
+
+func (m *model) renderTopHeader() string {
+	logoText := ` ██████  ██████   █████  ██████  ██      ███████
+██       ██   ██ ██   ██ ██   ██ ██      ██
+██   ███ ██████  ███████ ██   ██ ██      █████
+██    ██ ██   ██ ██   ██ ██   ██ ██      ██
+ ██████  ██   ██ ██   ██ ██████  ███████ ███████`
+	gradientLogo := renderGradient(logoText, "#209BC4", "#02A882")
+	logoLines := strings.Split(gradientLogo, "\n")
+
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted))
+	valStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF"))
+
+	gradleVer := m.projInfo.GradleVersion
+	kotlinVer := m.projInfo.KotlinVersion
+	groovyVer := m.projInfo.GroovyVersion
+	jvmVer := m.projInfo.JvmVersion
+	modulesStr := fmt.Sprintf("%d", m.projInfo.ModuleCount)
+	locStr := fmt.Sprintf("%d", m.projInfo.LinesOfCode)
+	
+	if m.projInfo.LinesOfCode > 999 {
+		s := fmt.Sprintf("%d", m.projInfo.LinesOfCode)
+		var parts []string
+		for len(s) > 3 {
+			parts = append([]string{s[len(s)-3:]}, parts...)
+			s = s[:len(s)-3]
+		}
+		if len(s) > 0 {
+			parts = append([]string{s}, parts...)
+		}
+		locStr = strings.Join(parts, ",")
+	}
+
+	infoLines := []string{
+		fmt.Sprintf("    %s %s", infoStyle.Render("Gradle Version :"), valStyle.Render(gradleVer)),
+		fmt.Sprintf("    %s %s", infoStyle.Render("Kotlin Version :"), valStyle.Render(kotlinVer)),
+		fmt.Sprintf("    %s %s / %s", infoStyle.Render("Groovy / JVM   :"), valStyle.Render(groovyVer), valStyle.Render(jvmVer)),
+		fmt.Sprintf("    %s %s", infoStyle.Render("Modules / LOC  :"), valStyle.Render(fmt.Sprintf("%s modules / %s lines", modulesStr, locStr))),
+		fmt.Sprintf("    %s %s / %s", infoStyle.Render("Source Files   :"), valStyle.Render(fmt.Sprintf("%d Java", m.projInfo.JavaCount)), valStyle.Render(fmt.Sprintf("%d Kotlin", m.projInfo.KotlinCount))),
+	}
+
+	var b strings.Builder
+	b.WriteString("\n")
+	for i := 0; i < 5; i++ {
+		logoPart := ""
+		if i < len(logoLines) {
+			logoPart = logoLines[i]
+		}
+		
+		visualWidth := lipgloss.Width(logoPart)
+		padding := 52 - visualWidth
+		if padding < 0 {
+			padding = 0
+		}
+		
+		infoPart := ""
+		if i < len(infoLines) {
+			infoPart = infoLines[i]
+		}
+		b.WriteString("  " + logoPart + strings.Repeat(" ", padding) + infoPart + "\n")
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+func (m *model) getLeftColumnWidth() int {
+	leftCol := m.renderProgressBar()
+	leftLines := strings.Split(strings.TrimSuffix(leftCol, "\n"), "\n")
+	maxLeftWidth := 0
+	for _, line := range leftLines {
+		w := lipgloss.Width(line)
+		if w > maxLeftWidth {
+			maxLeftWidth = w
+		}
+	}
+	if maxLeftWidth < 45 {
+		return 45
+	}
+	return maxLeftWidth
+}
+
+func (m *model) renderLeftColumn() string {
+	return m.renderProgressBar()
+}
+
+func (m *model) renderSideBySide(left string, right string, leftWidth int) string {
+	leftLines := strings.Split(strings.TrimSuffix(left, "\n"), "\n")
+	rightLines := strings.Split(strings.TrimSuffix(right, "\n"), "\n")
+
+	maxLines := len(leftLines)
+	if len(rightLines) > maxLines {
+		maxLines = len(rightLines)
+	}
+
+	var b strings.Builder
+	for i := 0; i < maxLines; i++ {
+		leftPart := ""
+		if i < len(leftLines) {
+			leftPart = leftLines[i]
+		}
+		
+		visualLeftWidth := lipgloss.Width(leftPart)
+		padding := leftWidth - visualLeftWidth
+		if padding < 0 {
+			padding = 0
+		}
+
+		rightPart := ""
+		if i < len(rightLines) {
+			rightPart = rightLines[i]
+		}
+
+		b.WriteString(leftPart + strings.Repeat(" ", padding) + " │ " + rightPart + "\n")
+	}
+	return b.String()
+}
+
+func insertString(row []string, text string, styledText string) {
+	runes := []rune(text)
+	start := 6 - len(runes)/2
+	if start >= 0 && start+len(runes) <= len(row) {
+		row[start] = styledText
+		for i := 1; i < len(runes); i++ {
+			row[start+i] = ""
+		}
+	}
 }
 
 func renderGradient(text string, startHex, endHex string) string {
