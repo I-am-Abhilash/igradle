@@ -56,3 +56,14 @@ release:
     ---
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+
+brews:
+  - name: igradle
+    repository:
+      owner: I-am-Abhilash
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/I-am-Abhilash/igradle"
+    description: "Interactive Gradle task launcher & real-time monitoring dashboard"
+    license: "MIT"

@@ -43,21 +43,28 @@ An interactive, high-performance **Gradle task launcher & real-time monitoring d
 
 ## 📥 Installation
 
-### 1. Direct Install (Recommended)
-If you already have Go installed on your machine, you can install the latest release directly:
+### 1. Homebrew (macOS & Linux)
+Install `igradle` easily via Homebrew:
 ```bash
-go install github.com/xe23/projects/igradle@latest
+brew tap I-am-Abhilash/tap
+brew install igradle
 ```
 
-### 2. Manual Build
-Clone the repository and compile the optimized binary:
+### 2. Direct Go Install
+If you have Go installed, you can compile and install it directly from source:
 ```bash
-git clone https://github.com/xe23/projects/igradle.git
+go install github.com/I-am-Abhilash/igradle@latest
+```
+
+### 3. Manual Build
+Clone the repository and compile:
+```bash
+git clone https://github.com/I-am-Abhilash/igradle.git
 cd igradle
 make install
 ```
 
-### 3. Cross-Compile for All Platforms
+### 4. Cross-Compile for All Platforms
 Use GoReleaser to compile local packages for Linux, macOS, and Windows:
 ```bash
 goreleaser release --snapshot --clean
