@@ -1,4 +1,4 @@
-# ⚡ igradle
+# igradle
 
 <p align="center">
   <a href="#-features"><b>Features</b></a> •
@@ -10,6 +10,13 @@
 
 An interactive, high-performance **Gradle task launcher & real-time monitoring dashboard** built in Go. Optimized for narrow, tall terminal configurations, `igradle` provides a unified split-screen monitoring dashboard that lets you search, multi-select, and execute Gradle tasks with live streaming output and dynamic system telemetry.
 
+## igradle go
+
+<p align="center">
+  <img src="assets/image.png" alt="igradle Features Overview" width="100%">
+</p>
+
+## Video
 
 https://github.com/user-attachments/assets/39603058-9e78-4765-bbb7-c05be1f618f7
 
@@ -134,10 +141,6 @@ igradle -h                    # Show CLI help
 
 ##  Features
 
-<p align="center">
-  <img src="assets/image.png" alt="igradle Features Overview" width="100%">
-</p>
-
 -  **Fuzzy Task Selector**: Fuzzy-search, filter, and multi-select tasks across all modules using a clean interactive list.
 -  **Multi-Module Aware**: Automatically parses your project structure and labels tasks with their corresponding module paths.
 -  **Real-Time Telemetry Dashboard**:
@@ -159,17 +162,6 @@ igradle -h                    # Show CLI help
 
 ### Subprocess Log Streaming
 Logs are streamed from Gradle subprocesses asynchronously using thread-safe Ring Buffers (5000-line capacity). A drop-on-full channel buffer keeps the subprocesses from blocking on I/O. The TUI coalesces updates at 60Hz via a `tea.Tick(16ms)` loop to maintain high performance with minimal CPU utilization.
-
----
-
-## 🎨 Themes & Branded Aesthetics
-
-`igradle` uses a premium dark-themed color palette to match your workspace:
-* **Brand Blue (`#209BC4`)**: Highlights panel headers, active tasks, elapsed time, and metadata.
-* **Brand Teal (`#02A882`)**: Shows success statuses, completion percentages, checkmarks (`✔`), and active daemons.
-* **Slate Gray (`#7F848E`)**: Keeps descriptions, inactive items, and secondary information legible without causing eye strain.
-
-To change your theme on the fly, press `t` in the selection menu to cycle through themes (including Dracula, Nord, and Gruvbox).
 
 ---
 
